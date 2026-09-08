@@ -28,7 +28,11 @@ const base = `/${repo.split('/')[1]}/`
 
 console.log(`Building for ${repo}  (base ${base})`)
 rmSync(resolve(ROOT, 'dist'), { recursive: true, force: true })
-run('npx', ['vite', 'build'], { env: { ...process.env, BASE_PATH: base } })
+// Invoke vite's JS entry with the current node rather than `npx`: on Windows
+// `npx` is a .cmd shim that execFileSync cannot spawn without a shell.
+run(process.execPath, [resolve(ROOT, 'node_modules/vite/bin/vite.js'), 'build'], {
+  env: { ...process.env, BASE_PATH: base },
+})
 
 // Assemble the branch contents in a throwaway worktree so nothing in the main
 // checkout is disturbed.
