@@ -179,8 +179,12 @@ function registerPick(ex: Exercise, setsGuess: number, state: WeekState): void {
 }
 
 /**
- * Inject one extra isolation slot for the priority muscle into whichever day
- * already trains it (or the first day otherwise).
+ * Give the priority muscle an extra isolation slot.
+ *
+ * Days that already train it each get one more — that is where the extra work
+ * belongs. If no day trains it at all (e.g. side delts on a full-body split),
+ * every day gets one, otherwise the user's stated priority would be limited to
+ * a single session per week. The time budget still decides what survives.
  */
 function withPriorityInjection(
   days: DayTemplate[],
@@ -188,22 +192,11 @@ function withPriorityInjection(
 ): DayTemplate[] {
   if (!priority) return days
   const extra: DaySlot = { role: 'isolation', target: priority, patterns: ['isolation'] }
-  let injected = false
-  const out = days.map((d) => {
-    if (injected) return d
-    const trains = d.slots.some(
-      (s) => s.target === priority || s.patterns.includes('isolation'),
-    )
-    if (trains && d.slots.some((s) => s.target === priority)) {
-      injected = true
-      return { ...d, slots: [...d.slots, extra] }
-    }
-    return d
-  })
-  if (!injected && out.length > 0) {
-    out[0] = { ...out[0], slots: [...out[0].slots, extra] }
-  }
-  return out
+  const trains = (d: DayTemplate) => d.slots.some((s) => s.target === priority)
+  const anyDayTrainsIt = days.some(trains)
+  return days.map((d) =>
+    !anyDayTrainsIt || trains(d) ? { ...d, slots: [...d.slots, extra] } : d,
+  )
 }
 
 export function selectExercisesForWeek(

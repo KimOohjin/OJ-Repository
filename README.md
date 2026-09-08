@@ -27,6 +27,8 @@ npm test         # 도메인 로직 유닛 테스트
 npm run smoke    # 실제 브라우저 E2E (dev 서버가 떠 있어야 함)
 npm run build
 npm run icons    # PWA 아이콘 재생성
+npm run preview:program            # 생성 결과를 터미널에 출력 (주간 세트 합계 포함)
+npm run preview:program 90 4 strength   # 분/일수/목표 지정
 ```
 
 ## 배포 (GitHub Pages, 무료)

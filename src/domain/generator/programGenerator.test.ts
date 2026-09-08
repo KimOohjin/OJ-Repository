@@ -105,6 +105,42 @@ describe('generateProgram — optional compounds vs. session length', () => {
     return p.days[dayIndex].exercises.map((e) => byId.get(e.exerciseId)!.pattern)
   }
 
+  it('still programs accessory work in a 45-minute session', () => {
+    // Full rest prescriptions eat a short session on compounds alone; rests
+    // scale down so the day is not three compounds and nothing else.
+    const p = generateProgram(
+      { ...base, sessionLengthMin: 45, daysPerWeek: 3, priorityMuscle: 'deltsSide' },
+      catalog,
+    )
+    for (const d of p.days) {
+      expect(
+        d.exercises.filter((e) => e.role === 'isolation').length,
+        `${d.label} had no isolation work`,
+      ).toBeGreaterThanOrEqual(1)
+    }
+    const byId = new Map(catalog.map((e) => [e.id, e]))
+    const sideDeltSets = p.days
+      .flatMap((d) => d.exercises)
+      .filter((e) => byId.get(e.exerciseId)!.primaryMuscle === 'deltsSide')
+      .reduce((s, e) => s + e.setScheme.sets, 0)
+    expect(sideDeltSets).toBeGreaterThanOrEqual(6)
+  })
+
+  it('keeps a priority-muscle overrun proportional to the session length', () => {
+    for (const sessionLengthMin of [45, 60, 90] as const) {
+      const p = generateProgram(
+        { ...base, sessionLengthMin, priorityMuscle: 'deltsSide' },
+        catalog,
+      )
+      for (const d of p.days) {
+        expect(
+          d.estDurationMin,
+          `${sessionLengthMin}min / ${d.label} ran ${d.estDurationMin}min`,
+        ).toBeLessThanOrEqual(sessionLengthMin * 1.1 + 6)
+      }
+    }
+  })
+
   it('drops vertical press at 60 min to protect accessory work', () => {
     const p = generateProgram({ ...base, sessionLengthMin: 60 }, catalog)
     expect(patternsOn(p, 0)).not.toContain('verticalPush')

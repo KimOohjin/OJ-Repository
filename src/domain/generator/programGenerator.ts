@@ -41,12 +41,27 @@ function midRep(spec: SchemeSpec): number {
   return Math.round((spec.repLow + spec.repHigh) / 2)
 }
 
+/**
+ * Short sessions need shorter rests, not fewer body parts. At 45 minutes the
+ * full rest prescriptions consume the whole session on compounds alone,
+ * leaving no room for the accessory work the volume targets depend on — so
+ * tighten rests (still within normal hypertrophy ranges) and run the main lift
+ * at the low end of its set range.
+ */
+function restScaleFor(sessionLengthMin: number): number {
+  return sessionLengthMin <= 45 ? 0.75 : 1
+}
+
 function schemeFor(
   goal: Goal,
   role: ExerciseRole,
   experience: Experience,
+  sessionLengthMin: number,
 ): { sets: number; repLow: number; repHigh: number; targetRpeByWeek: number[]; restSec: number } {
   const spec = SCHEMES[goal][role]
+  const restSec = Math.round((spec.restSec * restScaleFor(sessionLengthMin)) / 5) * 5
+  const short = sessionLengthMin <= 45
+
   if (experience === 'beginner') {
     const mid = midRep(spec)
     return {
@@ -54,15 +69,16 @@ function schemeFor(
       repLow: mid,
       repHigh: mid,
       targetRpeByWeek: spec.targetRpeByWeek.map((r) => Math.min(8, r - 1)),
-      restSec: spec.restSec,
+      restSec,
     }
   }
   // intermediate sits at the low end of each range; advanced at the top;
-  // the main lift gets the range midpoint regardless.
+  // the main lift gets the range midpoint regardless — except on a short
+  // session, where it starts low so accessories still fit.
   const sets =
     experience === 'advanced'
       ? spec.setRange[1]
-      : role === 'main'
+      : role === 'main' && !short
         ? Math.round((spec.setRange[0] + spec.setRange[1]) / 2)
         : spec.setRange[0]
   return {
@@ -70,7 +86,7 @@ function schemeFor(
     repLow: spec.repLow,
     repHigh: spec.repHigh,
     targetRpeByWeek: [...spec.targetRpeByWeek],
-    restSec: spec.restSec,
+    restSec,
   }
 }
 
@@ -170,7 +186,7 @@ export function generateProgram(input: GeneratorInput, catalog: Exercise[]): Pro
     const build = (pi: number, position: number): ProgramExerciseDraft => {
       const pick = day.picks[pi]
       const role = roles[pi]
-      const s = schemeFor(input.goal, role, input.experience)
+      const s = schemeFor(input.goal, role, input.experience, input.sessionLengthMin)
       return {
         exerciseId: pick.exercise.id,
         order: position,
@@ -199,7 +215,7 @@ export function generateProgram(input: GeneratorInput, catalog: Exercise[]): Pro
     const setFloor = (role: ExerciseRole) => (role === 'main' ? 3 : 2)
 
     // Cost of one floored isolation set block, used to reserve accessory room.
-    const isoScheme = SCHEMES[input.goal].isolation
+    const isoScheme = schemeFor(input.goal, 'isolation', input.experience, input.sessionLengthMin)
     const isoFloorCost = exerciseSeconds('isolation', setFloor('isolation'), isoScheme.restSec)
     // Strength days run few accessories by design; hypertrophy needs them.
     const reservedIsoSlots = input.goal === 'strength' ? 1 : 2
@@ -262,7 +278,10 @@ export function generateProgram(input: GeneratorInput, catalog: Exercise[]): Pro
     const [mev, mrv] = landmarks[muscle]
     const isPriority = input.priorityMuscle === muscle
     const floor = isPriority ? Math.round(mev * 1.25) : mev
-    const slackAllowance = isPriority ? 260 : 0
+    // The priority muscle may run the session slightly long — proportionally,
+    // so a 45-minute session doesn't overrun as much as a 90-minute one. The
+    // reported estDurationMin reflects the overrun.
+    const slackAllowance = isPriority ? Math.round(budget * 0.08) : 0
 
     for (let added = 0; added < 8; added++) {
       const have = weeklyVolume(days, catalogById).get(muscle) ?? 0
