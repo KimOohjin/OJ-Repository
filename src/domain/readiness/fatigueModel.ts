@@ -90,10 +90,16 @@ export function readinessScore(
   return { score, band: bandFor(score) }
 }
 
+/**
+ * Band thresholds are calibrated so that answering the middle of every scale
+ * (a genuinely unremarkable day) scores 50 and lands in `yellow` — "train as
+ * planned". Advice to cut intensity should require the day to be actually bad,
+ * otherwise the app cries wolf and people stop reading it.
+ */
 export function bandFor(score: number): ReadinessBand {
-  if (score >= 80) return 'green'
-  if (score >= 60) return 'yellow'
-  if (score >= 40) return 'orange'
+  if (score >= 75) return 'green'
+  if (score >= 50) return 'yellow'
+  if (score >= 30) return 'orange'
   return 'red'
 }
 

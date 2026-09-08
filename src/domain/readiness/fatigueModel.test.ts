@@ -34,7 +34,7 @@ describe('readinessScore', () => {
     expect(band).toBe('green')
   })
 
-  it('scores the plan’s worked example around the orange band', () => {
+  it('scores a poor-sleep, sore, stressed day in the orange band', () => {
     const { score, band } = readinessScore({
       sleepQuality: 3,
       sleepHours: 6,
@@ -45,7 +45,31 @@ describe('readinessScore', () => {
     })
     expect(score).toBeGreaterThanOrEqual(35)
     expect(score).toBeLessThanOrEqual(45)
-    expect(['orange', 'red']).toContain(band)
+    expect(band).toBe('orange')
+  })
+
+  it('treats an all-neutral day as yellow — train as planned', () => {
+    const { score, band } = readinessScore({
+      sleepQuality: 3,
+      soreness: 3,
+      energy: 3,
+      stress: 3,
+      motivation: 3,
+    })
+    expect(score).toBe(50)
+    expect(band).toBe('yellow')
+  })
+
+  it('only reaches red when the day is genuinely bad', () => {
+    const { band } = readinessScore({
+      sleepQuality: 1,
+      sleepHours: 4,
+      soreness: 5,
+      energy: 1,
+      stress: 5,
+      motivation: 2,
+    })
+    expect(band).toBe('red')
   })
 
   it('redistributes the sleep-hours weight when hours are missing', () => {

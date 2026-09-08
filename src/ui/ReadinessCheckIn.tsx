@@ -33,12 +33,14 @@ export function ReadinessCheckIn({ existing }: { existing: ReadinessEntryRecord 
   const acwr = useAppStore((s) => s.acwr)
   const refreshStatus = useAppStore((s) => s.refreshStatus)
 
+  // Defaults describe an ordinary decent day, so the common case is one tap
+  // (저장) and only a bad day needs adjusting.
   const [values, setValues] = useState({
-    sleepQuality: existing?.sleepQuality ?? 3,
+    sleepQuality: existing?.sleepQuality ?? 4,
     soreness: existing?.soreness ?? 2,
-    energy: existing?.energy ?? 3,
+    energy: existing?.energy ?? 4,
     stress: existing?.stress ?? 2,
-    motivation: existing?.motivation ?? 3,
+    motivation: existing?.motivation ?? 4,
   })
   const [sleepHours, setSleepHours] = useState<string>(
     existing?.sleepHours != null ? String(existing.sleepHours) : '',
