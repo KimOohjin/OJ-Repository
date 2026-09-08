@@ -12,7 +12,8 @@
     "icons": "node scripts/make-icons.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:backup": "node scripts/smoke-backup.mjs",
-    "preview:program": "node scripts/preview-program.mjs"
+    "preview:program": "node scripts/preview-program.mjs",
+    "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "dexie": "^4.4.5",

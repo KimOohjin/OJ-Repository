@@ -33,11 +33,31 @@ npm run preview:program 90 4 strength   # 분/일수/목표 지정
 
 ## 배포 (GitHub Pages, 무료)
 
-1. 이 저장소를 GitHub에 push
-2. Settings → Pages → Source를 **GitHub Actions**로 설정
-3. `main`에 push하면 `.github/workflows/deploy.yml`이 빌드 후 배포
+**현재 배포 주소:** https://kimoohjin.github.io/OJ-Repository/
 
-`BASE_PATH`는 워크플로가 저장소 이름으로 자동 설정한다.
+두 가지 방법 중 하나. 현재는 **A**로 배포돼 있다.
+
+### A. 수동 (CI 불필요)
+
+```bash
+npm run deploy
+```
+
+`dist/`를 저장소 이름에 맞는 base로 빌드해 `gh-pages` 브랜치로 force-push 한다.
+`gh-pages` 브랜치가 곧 배포본이므로 소스는 `main`에 따로 push하면 된다.
+Pages 설정: Settings → Pages → Source = **Deploy from a branch**, `gh-pages` / `/ (root)`.
+
+### B. GitHub Actions (자동)
+
+`main`에 push할 때마다 `.github/workflows/deploy.yml`이 빌드·배포한다.
+이 워크플로 파일을 push하려면 토큰에 `workflow` 권한이 필요하다:
+
+```bash
+gh auth refresh -s workflow      # 1회
+git push origin main
+```
+
+그다음 Settings → Pages → Source를 **GitHub Actions**로 바꾼다. A와 B는 병행하지 않는다.
 
 ## 구조
 
