@@ -211,7 +211,7 @@ export interface BackupRecord {
 // Database
 // ---------------------------------------------------------------------------
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export class WorkoutDB extends Dexie {
   exercises!: EntityTable<Exercise, 'id'>
@@ -250,6 +250,14 @@ export class WorkoutDB extends Dexie {
       stallEvents: 'id, exerciseId, detectedAt, severity',
       deloadEvents: 'id, blockId, triggeredAt',
       backups: 'id, createdAt',
+    })
+
+    // v2: `completedAt` needs to be a standalone index — the weekly volume
+    // tracker scans all sets in the current ISO week regardless of exercise,
+    // which the [exerciseId+completedAt] compound index can't serve.
+    this.version(2).stores({
+      workoutSets:
+        'id, workoutId, exerciseId, completedAt, [workoutId+order], [exerciseId+completedAt]',
     })
   }
 }

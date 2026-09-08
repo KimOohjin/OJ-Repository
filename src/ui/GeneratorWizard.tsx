@@ -50,6 +50,7 @@ const EQUIPMENT: Array<{ value: Equipment; label: string }> = [
 
 export function GeneratorWizard() {
   const generateFromRules = useAppStore((s) => s.generateFromRules)
+  const generateFromAi = useAppStore((s) => s.generateFromAi)
   const hasAiKey = useAppStore((s) => Boolean(s.settings.aiApiKey))
 
   const [mode, setMode] = useState<'rules' | 'ai'>('rules')
@@ -61,12 +62,14 @@ export function GeneratorWizard() {
   const [excluded, setExcluded] = useState<Equipment[]>([])
   const [freeform, setFreeform] = useState('')
   const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const toggleEquip = (e: Equipment) =>
     setExcluded((cur) => (cur.includes(e) ? cur.filter((x) => x !== e) : [...cur, e]))
 
   const submit = async () => {
     setBusy(true)
+    setNotice(null)
     try {
       const input: GeneratorInput = {
         daysPerWeek,
@@ -77,8 +80,14 @@ export function GeneratorWizard() {
         excludedEquipment: excluded,
         freeformNotes: freeform.trim() || undefined,
       }
-      // AI path lands here later; v1 always uses the rule engine.
-      await generateFromRules(input)
+      if (mode === 'ai' && hasAiKey) {
+        const r = await generateFromAi(input)
+        if (r.fellBack) setNotice(`AI 생성에 실패해 규칙 엔진으로 만들었어요. (${r.error ?? ''})`)
+      } else {
+        await generateFromRules(input)
+      }
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : '생성에 실패했습니다.')
     } finally {
       setBusy(false)
     }
@@ -96,11 +105,19 @@ export function GeneratorWizard() {
           { value: 'ai', label: hasAiKey ? 'AI 생성' : 'AI 생성 (키 필요)' },
         ]}
       />
-      {mode === 'ai' && (
+      {mode === 'ai' && !hasAiKey && (
         <Card className="text-sm text-amber-300">
-          AI 생성은 설정에서 API 키를 넣으면 활성화됩니다. 지금은 규칙 엔진으로 생성돼요.
+          AI 생성은 <b>설정</b> 탭에서 API 키를 넣으면 활성화됩니다. 지금 생성하면 규칙 엔진이
+          사용돼요. (Gemini는 무료 티어가 있어요.)
         </Card>
       )}
+      {mode === 'ai' && hasAiKey && (
+        <Card className="text-sm text-slate-400">
+          자유 서술을 함께 보내 프로그램을 만듭니다. 결과는 규칙 엔진의 기준으로 검증되고, 실패하면
+          자동으로 규칙 엔진이 대신 만듭니다.
+        </Card>
+      )}
+      {notice && <Card className="text-sm text-amber-300">{notice}</Card>}
 
       <Card className="space-y-4">
         <Field label="주당 운동 일수">
@@ -117,6 +134,7 @@ export function GeneratorWizard() {
         </Field>
         <Field label="우선 부위 (선택)">
           <select
+            aria-label="우선 부위"
             value={priorityMuscle}
             onChange={(e) => setPriority(e.target.value as Muscle | '')}
             className="w-full min-h-12 px-3 rounded-xl bg-slate-900 ring-1 ring-slate-700 text-slate-100"
@@ -147,7 +165,7 @@ export function GeneratorWizard() {
             ))}
           </div>
         </Field>
-        {mode === 'ai' && (
+        {mode === 'ai' && hasAiKey && (
           <Field label="자유 서술 (AI 전용)">
             <textarea
               value={freeform}

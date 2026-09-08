@@ -31,3 +31,8 @@ select,
 textarea {
   font: inherit;
 }
+
+/* Home-indicator clearance for the installed PWA. */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

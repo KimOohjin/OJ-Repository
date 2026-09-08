@@ -65,11 +65,16 @@ export function SegmentedControl<T extends string | number>({
   )
 }
 
+/**
+ * Labelled group. Uses a fieldset rather than a <label> because most fields
+ * here wrap a group of buttons — a <label> would fold every button caption into
+ * one accessible name.
+ */
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="block">
-      <span className="block mb-2 text-sm font-medium text-slate-400">{label}</span>
+    <fieldset className="block border-0 p-0 m-0 min-w-0">
+      <legend className="mb-2 text-sm font-medium text-slate-400">{label}</legend>
       {children}
-    </label>
+    </fieldset>
   )
 }
