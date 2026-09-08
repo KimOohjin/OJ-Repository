@@ -147,6 +147,12 @@ export interface DaySlot {
   role: ExerciseRole
   target: Muscle
   patterns: MovementPattern[]
+  /**
+   * Nice-to-have compound: included only when the session is long enough to
+   * still leave room for accessory work. Non-optional compounds define the
+   * split's structure and its per-muscle frequency, so they are never dropped.
+   */
+  optional?: boolean
 }
 
 export interface DayTemplate {
@@ -199,6 +205,10 @@ const P = {
 // Day templates are 1 main + 2 secondary + 3 isolation (6 slots). The time
 // budget then trims isolations for shorter sessions; the weekly-volume pass
 // tops muscles up toward their landmarks.
+// The three required compounds are horizontal push / horizontal pull /
+// vertical pull. Across two upper days that gives chest, upper back and lats
+// two sessions each — the frequency floor. Vertical pressing is added on top
+// whenever the session is long enough to keep the accessory work as well.
 const UPPER = (letter: string): DayTemplate => ({
   label: `상체 ${letter}`,
   pplFocus: 'upper',
@@ -206,6 +216,7 @@ const UPPER = (letter: string): DayTemplate => ({
     P.hPush('main', 'chest'),
     P.hPull('secondary', 'backUpper'),
     P.vPull('secondary', 'backLats'),
+    { ...P.vPush('secondary', 'deltsFront'), optional: true },
     P.iso('deltsSide'),
     letter === 'A' ? P.iso('triceps') : P.iso('deltsRear'),
     P.iso('biceps'),
@@ -222,6 +233,8 @@ const LOWER = (letter: string): DayTemplate => ({
     P.iso('hamstrings'),
     letter === 'A' ? P.iso('quads') : P.iso('glutes'),
     P.iso('calves'),
+    // Last in the slot order, so the time budget drops it first on short days.
+    P.iso('abs'),
   ],
 })
 

@@ -145,6 +145,15 @@ function pickForSlot(
     if (candidates.length === 0) return null
   }
 
+  // Drop lifts whose usable rep range doesn't reach the slot's prescription at
+  // all — a conventional deadlift belongs at 3-6, never as an 8-12 accessory.
+  // Only applied when something else can do the job.
+  const scheme = SCHEMES[input.goal][slot.role]
+  const overlapping = candidates.filter(
+    (ex) => ex.defaultRepRange[0] <= scheme.repHigh && ex.defaultRepRange[1] >= scheme.repLow,
+  )
+  if (overlapping.length > 0) candidates = overlapping
+
   let best: Exercise | null = null
   let bestScore = -Infinity
   for (const ex of candidates) {

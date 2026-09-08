@@ -11,6 +11,7 @@
 
 import {
   GENERATOR_VERSION,
+  MUSCLE_LABEL_KO,
   type Experience,
   type ExerciseRole,
   type Exercise,
@@ -102,10 +103,13 @@ function assignRoles(picks: SlotPick[]): ExerciseRole[] {
       ? 'isolation'
       : 'secondary',
   )
+  // The main lift must sit on a required slot — an optional one can be dropped
+  // by the time budget, which would leave the day with no main at all.
+  const canBeMain = (p: SlotPick, i: number) => roles[i] !== 'isolation' && !p.slot.optional
   const mainIdx = picks.findIndex(
-    (p, i) => roles[i] !== 'isolation' && p.exercise.movementType === 'compound' && p.exercise.e1rmEligible,
+    (p, i) => canBeMain(p, i) && p.exercise.movementType === 'compound' && p.exercise.e1rmEligible,
   )
-  const promote = mainIdx === -1 ? roles.findIndex((r) => r === 'secondary') : mainIdx
+  const promote = mainIdx === -1 ? picks.findIndex(canBeMain) : mainIdx
   if (promote !== -1) roles[promote] = 'main'
   return roles
 }
@@ -194,15 +198,23 @@ export function generateProgram(input: GeneratorInput, catalog: Exercise[]): Pro
       list.reduce((sum, e) => sum + exerciseSeconds(e.role, e.setScheme.sets, e.setScheme.restSec), 0)
     const setFloor = (role: ExerciseRole) => (role === 'main' ? 3 : 2)
 
-    // 1. Compounds (main + secondary) are always kept — the split's structure
-    //    and training frequency depend on them. If they overflow the budget we
-    //    trim their set counts (from the last one backward) down to a floor.
-    const compoundIdx = order.filter((pi) => roles[pi] !== 'isolation')
+    // Cost of one floored isolation set block, used to reserve accessory room.
+    const isoScheme = SCHEMES[input.goal].isolation
+    const isoFloorCost = exerciseSeconds('isolation', setFloor('isolation'), isoScheme.restSec)
+    // Strength days run few accessories by design; hypertrophy needs them.
+    const reservedIsoSlots = input.goal === 'strength' ? 1 : 2
+
+    const isRequired = (pi: number) => roles[pi] !== 'isolation' && !day.picks[pi].slot.optional
+    const requiredIdx = order.filter(isRequired)
+    const optionalIdx = order.filter((pi) => roles[pi] !== 'isolation' && day.picks[pi].slot.optional)
     const isoIdx = order
       .filter((pi) => roles[pi] === 'isolation')
       .sort((a, b) => isoPriorityRank(day.picks[a], input) - isoPriorityRank(day.picks[b], input))
-    const exercises: ProgramExerciseDraft[] = compoundIdx.map((pi, i) => build(pi, i))
 
+    // 1. Required compounds are always kept — the split's structure and its
+    //    per-muscle frequency depend on them. On overflow we trim their set
+    //    counts (from the last one backward) down to a floor.
+    const exercises: ProgramExerciseDraft[] = requiredIdx.map((pi, i) => build(pi, i))
     for (let i = exercises.length - 1; i >= 0 && dayCost(exercises) > budget; i--) {
       const e = exercises[i]
       while (e.setScheme.sets > setFloor(e.role) && dayCost(exercises) > budget) {
@@ -210,7 +222,16 @@ export function generateProgram(input: GeneratorInput, catalog: Exercise[]): Pro
       }
     }
 
-    // 2. Fill the remaining time with isolations; trim a candidate to its floor
+    // 2. Optional compounds join only if the day can still afford its reserved
+    //    accessory slots afterwards — otherwise a long compound would silently
+    //    eat the isolation work the volume targets depend on.
+    for (const pi of optionalIdx) {
+      const e = build(pi, exercises.length)
+      if (dayCost([...exercises, e]) + reservedIsoSlots * isoFloorCost > budget) continue
+      exercises.push(e)
+    }
+
+    // 3. Fill the remaining time with isolations; trim a candidate to its floor
     //    before giving up on it, and stop once even a floored set won't fit.
     for (const pi of isoIdx) {
       const e = build(pi, exercises.length)
@@ -256,6 +277,64 @@ export function generateProgram(input: GeneratorInput, catalog: Exercise[]): Pro
       const cand = pickRemoveSetTarget(days, catalogById, muscle)
       if (!cand || cand.setScheme.sets <= 2) break
       cand.setScheme.sets -= 1
+    }
+  }
+
+  // Balancing changed set counts, so the per-day estimate computed during
+  // construction is stale — recompute it or the app under-reports how long a
+  // session actually takes.
+  for (const day of days) {
+    const spent = day.exercises.reduce(
+      (sum, e) => sum + exerciseSeconds(e.role, e.setScheme.sets, e.setScheme.restSec),
+      0,
+    )
+    day.estDurationMin = Math.round((spent / 60 + 6) * 10) / 10
+  }
+
+  // --- under-dosed muscles -------------------------------------------------
+  // The time budget can leave real gaps (4x60min simply cannot reach every
+  // hypertrophy floor). Say which muscles fell short instead of shipping a
+  // program that quietly under-delivers.
+  {
+    const vol = weeklyVolume(days, catalogById)
+    const under = (Object.keys(landmarks) as Muscle[])
+      .filter((m) => (vol.get(m) ?? 0) > 0 && (vol.get(m) ?? 0) < landmarks[m][0])
+      .sort((a, b) => landmarks[b][0] - (vol.get(b) ?? 0) - (landmarks[a][0] - (vol.get(a) ?? 0)))
+    if (under.length >= 3) {
+      const named = under.slice(0, 4).map((m) => MUSCLE_LABEL_KO[m]).join(', ')
+      warnings.push(
+        `주 ${input.daysPerWeek}일 × ${input.sessionLengthMin}분으로는 ${named}${under.length > 4 ? ' 등' : ''}의 주간 세트가 권장 최소치에 못 미쳐요. 세션을 늘리거나 운동 일수를 늘리면 채워집니다.`,
+      )
+    }
+    // The priority muscle is the user's explicit ask, so call it out by name.
+    const p = input.priorityMuscle
+    if (p && (vol.get(p) ?? 0) < landmarks[p][0]) {
+      warnings.push(
+        `우선 부위인 ${MUSCLE_LABEL_KO[p]}에 주 ${vol.get(p)}세트까지만 배정됐어요 (권장 ${landmarks[p][0]}세트 이상). 시간 안에서 최대한 늘린 결과입니다 — 더 필요하면 세션을 길게 잡으세요.`,
+      )
+    }
+  }
+
+  // --- pattern coverage ---------------------------------------------------
+  // Strength training wants each main pattern twice a week. When the session
+  // length can't fit that, say so rather than quietly shipping a gap.
+  if (input.goal === 'strength') {
+    const freq = new Map<string, number>()
+    for (const d of days) {
+      const seen = new Set<string>()
+      for (const pe of d.exercises) {
+        const ex = catalogById.get(pe.exerciseId)
+        if (ex && pe.role !== 'isolation') seen.add(ex.pattern)
+      }
+      for (const p of seen) freq.set(p, (freq.get(p) ?? 0) + 1)
+    }
+    const missing = (['verticalPush', 'horizontalPush', 'squat', 'hinge'] as const).filter(
+      (p) => (freq.get(p) ?? 0) < 2,
+    )
+    if (missing.length > 0) {
+      warnings.push(
+        `${input.sessionLengthMin}분 세션에는 ${missing.map(patternLabel).join('·')} 패턴을 주 2회 넣기 어려워요. 세션을 75분 이상으로 늘리면 자동으로 포함됩니다.`,
+      )
     }
   }
 
@@ -334,6 +413,18 @@ function pickRemoveSetTarget(
     }
   }
   return best
+}
+
+function patternLabel(pattern: string): string {
+  const labels: Record<string, string> = {
+    verticalPush: '수직 밀기',
+    horizontalPush: '수평 밀기',
+    verticalPull: '수직 당기기',
+    horizontalPull: '수평 당기기',
+    squat: '스쿼트',
+    hinge: '힌지',
+  }
+  return labels[pattern] ?? pattern
 }
 
 function goalLabel(goal: Goal): string {

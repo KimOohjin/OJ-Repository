@@ -94,6 +94,103 @@ describe('generateProgram — 주4일 근비대 60분 중급', () => {
   })
 })
 
+describe('generateProgram — optional compounds vs. session length', () => {
+  const base = {
+    daysPerWeek: 4 as const,
+    goal: 'hypertrophy' as const,
+    experience: 'intermediate' as const,
+  }
+  const patternsOn = (p: ReturnType<typeof generateProgram>, dayIndex: number) => {
+    const byId = new Map(catalog.map((e) => [e.id, e]))
+    return p.days[dayIndex].exercises.map((e) => byId.get(e.exerciseId)!.pattern)
+  }
+
+  it('drops vertical press at 60 min to protect accessory work', () => {
+    const p = generateProgram({ ...base, sessionLengthMin: 60 }, catalog)
+    expect(patternsOn(p, 0)).not.toContain('verticalPush')
+    // the isolation work it would have displaced is still there
+    const isolations = p.days[0].exercises.filter((e) => e.role === 'isolation')
+    expect(isolations.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('includes vertical press at 90 min, keeping accessories too', () => {
+    const p = generateProgram({ ...base, sessionLengthMin: 90 }, catalog)
+    expect(patternsOn(p, 0)).toContain('verticalPush')
+    const isolations = p.days[0].exercises.filter((e) => e.role === 'isolation')
+    expect(isolations.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('keeps every day inside its time budget at all session lengths', () => {
+    for (const sessionLengthMin of [45, 60, 75, 90] as const) {
+      const p = generateProgram({ ...base, sessionLengthMin }, catalog)
+      for (const d of p.days) {
+        expect(
+          d.estDurationMin,
+          `${sessionLengthMin}min / ${d.label} ran ${d.estDurationMin}min`,
+        ).toBeLessThanOrEqual(sessionLengthMin + 6)
+      }
+    }
+  })
+
+  it('never puts the main lift on a droppable slot', () => {
+    for (const sessionLengthMin of [45, 60, 75, 90] as const) {
+      const p = generateProgram({ ...base, sessionLengthMin }, catalog)
+      for (const d of p.days) {
+        expect(d.exercises.filter((e) => e.role === 'main')).toHaveLength(1)
+      }
+    }
+  })
+
+  it('reports a duration that matches the sets it actually prescribes', () => {
+    // The weekly-volume pass adds sets after each day is built, so a stale
+    // estimate would under-report how long the session really takes.
+    const TIME = {
+      main: { setup: 150, exec: 40, transition: 60 },
+      secondary: { setup: 90, exec: 30, transition: 60 },
+      isolation: { setup: 45, exec: 25, transition: 60 },
+    }
+    const p = generateProgram(
+      { ...base, sessionLengthMin: 60, priorityMuscle: 'deltsSide' },
+      catalog,
+    )
+    for (const d of p.days) {
+      const seconds = d.exercises.reduce((sum, e) => {
+        const c = TIME[e.role]
+        return sum + c.setup + e.setScheme.sets * (e.setScheme.restSec + c.exec) + c.transition
+      }, 0)
+      const expected = Math.round((seconds / 60 + 6) * 10) / 10
+      expect(d.estDurationMin, `${d.label}`).toBeCloseTo(expected, 1)
+    }
+  })
+
+  it('warns by name when the priority muscle falls short', () => {
+    const p = generateProgram(
+      { ...base, sessionLengthMin: 60, priorityMuscle: 'deltsSide' },
+      catalog,
+    )
+    const byId = new Map(catalog.map((e) => [e.id, e]))
+    let sets = 0
+    for (const d of p.days) {
+      for (const e of d.exercises) {
+        const ex = byId.get(e.exerciseId)!
+        if (ex.primaryMuscle === 'deltsSide') sets += e.setScheme.sets
+        else if (ex.secondaryMuscles.includes('deltsSide')) sets += e.setScheme.sets * 0.5
+      }
+    }
+    if (sets < 12) {
+      expect(p.warnings.some((w) => w.includes('측면 삼각근'))).toBe(true)
+    }
+  })
+
+  it('warns when a strength program cannot fit its pattern frequency', () => {
+    const short = generateProgram(
+      { daysPerWeek: 4, goal: 'strength', sessionLengthMin: 45, experience: 'intermediate' },
+      catalog,
+    )
+    expect(short.warnings.some((w) => w.includes('패턴'))).toBe(true)
+  })
+})
+
 describe('generateProgram — beginner overrides', () => {
   const program = generateProgram(
     { daysPerWeek: 3, goal: 'hypertrophy', sessionLengthMin: 45, experience: 'beginner' },
